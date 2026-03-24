@@ -12,6 +12,10 @@ var mongoClient = new MongoClient("mongodb://mongodb:27017");
 var database = mongoClient.GetDatabase("auth_db");
 var usersCollection = database.GetCollection<User>("users");
 
+// Dependency Injection
+builder.Services.AddSingleton(usersCollection);
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+
 // JWT
 var jwtKey = "supersecretkey1234567890abcdefgh";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -42,9 +46,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Kayıt
-app.MapPost("/auth/register", async (RegisterRequest req) =>
+app.MapPost("/auth/register", async (RegisterRequest req, IUserRepository repo) =>
 {
-    var existing = await usersCollection.Find(u => u.Email == req.Email).FirstOrDefaultAsync();
+    var existing = await repo.GetByEmailAsync(req.Email);
     if (existing != null)
         return Results.Conflict("Bu email zaten kayıtlı.");
 
@@ -55,14 +59,14 @@ app.MapPost("/auth/register", async (RegisterRequest req) =>
         Role = "user"
     };
 
-    await usersCollection.InsertOneAsync(user);
+    await repo.CreateAsync(user);
     return Results.Ok("Kayıt başarılı.");
 });
 
 // Giriş
-app.MapPost("/auth/login", async (LoginRequest req) =>
+app.MapPost("/auth/login", async (LoginRequest req, IUserRepository repo) =>
 {
-    var user = await usersCollection.Find(u => u.Email == req.Email).FirstOrDefaultAsync();
+    var user = await repo.GetByEmailAsync(req.Email);
     if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
         return Results.Unauthorized();
 
