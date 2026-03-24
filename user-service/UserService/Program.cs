@@ -7,6 +7,10 @@ var mongoClient = new MongoClient("mongodb://mongodb:27017");
 var database = mongoClient.GetDatabase("order_db");
 var ordersCollection = database.GetCollection<Order>("orders");
 
+// Dependency Injection
+builder.Services.AddSingleton(ordersCollection);
+builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -19,22 +23,22 @@ if (app.Environment.IsDevelopment())
 }
 
 // Tüm siparişleri getir
-app.MapGet("/orders", async () =>
+app.MapGet("/orders", async (IOrderRepository repo) =>
 {
-    var orders = await ordersCollection.Find(_ => true).ToListAsync();
+    var orders = await repo.GetAllAsync();
     return Results.Ok(orders);
 });
 
 // Tek sipariş getir
-app.MapGet("/orders/{id}", async (string id) =>
+app.MapGet("/orders/{id}", async (string id, IOrderRepository repo) =>
 {
-    var order = await ordersCollection.Find(o => o.Id == id).FirstOrDefaultAsync();
+    var order = await repo.GetByIdAsync(id);
     if (order == null) return Results.NotFound("Sipariş bulunamadı.");
     return Results.Ok(order);
 });
 
 // Sipariş oluştur
-app.MapPost("/orders", async (OrderRequest req) =>
+app.MapPost("/orders", async (OrderRequest req, IOrderRepository repo) =>
 {
     var order = new Order
     {
@@ -44,24 +48,23 @@ app.MapPost("/orders", async (OrderRequest req) =>
         Status = "Beklemede",
         CreatedAt = DateTime.UtcNow
     };
-    await ordersCollection.InsertOneAsync(order);
+    await repo.CreateAsync(order);
     return Results.Created($"/orders/{order.Id}", order);
 });
 
 // Sipariş güncelle
-app.MapPut("/orders/{id}", async (string id, OrderStatusRequest req) =>
+app.MapPut("/orders/{id}", async (string id, OrderStatusRequest req, IOrderRepository repo) =>
 {
-    var update = Builders<Order>.Update.Set(o => o.Status, req.Status);
-    var result = await ordersCollection.UpdateOneAsync(o => o.Id == id, update);
-    if (result.MatchedCount == 0) return Results.NotFound("Sipariş bulunamadı.");
+    var result = await repo.UpdateStatusAsync(id, req.Status);
+    if (!result) return Results.NotFound("Sipariş bulunamadı.");
     return Results.Ok("Sipariş güncellendi.");
 });
 
 // Sipariş sil
-app.MapDelete("/orders/{id}", async (string id) =>
+app.MapDelete("/orders/{id}", async (string id, IOrderRepository repo) =>
 {
-    var result = await ordersCollection.DeleteOneAsync(o => o.Id == id);
-    if (result.DeletedCount == 0) return Results.NotFound("Sipariş bulunamadı.");
+    var result = await repo.DeleteAsync(id);
+    if (!result) return Results.NotFound("Sipariş bulunamadı.");
     return Results.Ok("Sipariş silindi.");
 });
 

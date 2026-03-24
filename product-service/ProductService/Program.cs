@@ -7,6 +7,10 @@ var mongoClient = new MongoClient("mongodb://mongodb:27017");
 var database = mongoClient.GetDatabase("product_db");
 var productsCollection = database.GetCollection<Product>("products");
 
+// Dependency Injection
+builder.Services.AddSingleton(productsCollection);
+builder.Services.AddScoped<IProductRepository, ProductRepository>();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -19,22 +23,22 @@ if (app.Environment.IsDevelopment())
 }
 
 // Tüm ürünleri getir
-app.MapGet("/products", async () =>
+app.MapGet("/products", async (IProductRepository repo) =>
 {
-    var products = await productsCollection.Find(_ => true).ToListAsync();
+    var products = await repo.GetAllAsync();
     return Results.Ok(products);
 });
 
 // Tek ürün getir
-app.MapGet("/products/{id}", async (string id) =>
+app.MapGet("/products/{id}", async (string id, IProductRepository repo) =>
 {
-    var product = await productsCollection.Find(p => p.Id == id).FirstOrDefaultAsync();
+    var product = await repo.GetByIdAsync(id);
     if (product == null) return Results.NotFound("Ürün bulunamadı.");
     return Results.Ok(product);
 });
 
 // Ürün ekle
-app.MapPost("/products", async (ProductRequest req) =>
+app.MapPost("/products", async (ProductRequest req, IProductRepository repo) =>
 {
     var product = new Product
     {
@@ -43,29 +47,30 @@ app.MapPost("/products", async (ProductRequest req) =>
         Stock = req.Stock,
         Category = req.Category
     };
-    await productsCollection.InsertOneAsync(product);
+    await repo.CreateAsync(product);
     return Results.Created($"/products/{product.Id}", product);
 });
 
 // Ürün güncelle
-app.MapPut("/products/{id}", async (string id, ProductRequest req) =>
+app.MapPut("/products/{id}", async (string id, ProductRequest req, IProductRepository repo) =>
 {
-    var update = Builders<Product>.Update
-        .Set(p => p.Name, req.Name)
-        .Set(p => p.Price, req.Price)
-        .Set(p => p.Stock, req.Stock)
-        .Set(p => p.Category, req.Category);
-
-    var result = await productsCollection.UpdateOneAsync(p => p.Id == id, update);
-    if (result.MatchedCount == 0) return Results.NotFound("Ürün bulunamadı.");
+    var product = new Product
+    {
+        Name = req.Name,
+        Price = req.Price,
+        Stock = req.Stock,
+        Category = req.Category
+    };
+    var result = await repo.UpdateAsync(id, product);
+    if (!result) return Results.NotFound("Ürün bulunamadı.");
     return Results.Ok("Ürün güncellendi.");
 });
 
 // Ürün sil
-app.MapDelete("/products/{id}", async (string id) =>
+app.MapDelete("/products/{id}", async (string id, IProductRepository repo) =>
 {
-    var result = await productsCollection.DeleteOneAsync(p => p.Id == id);
-    if (result.DeletedCount == 0) return Results.NotFound("Ürün bulunamadı.");
+    var result = await repo.DeleteAsync(id);
+    if (!result) return Results.NotFound("Ürün bulunamadı.");
     return Results.Ok("Ürün silindi.");
 });
 
