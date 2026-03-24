@@ -24,6 +24,28 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// JWT Auth kontrolü (loglama'dan önce)
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value?.ToLower() ?? "";
+
+    if (path.StartsWith("/auth"))
+    {
+        await next();
+        return;
+    }
+
+    var token = context.Request.Headers["Authorization"].FirstOrDefault();
+    if (string.IsNullOrEmpty(token))
+    {
+        context.Response.StatusCode = 401;
+        await context.Response.WriteAsync("Unauthorized");
+        return;
+    }
+
+    await next();
+});
+
 // Loglama middleware
 app.Use(async (context, next) =>
 {
@@ -39,25 +61,6 @@ app.Use(async (context, next) =>
 
     log.StatusCode = context.Response.StatusCode;
     await logsCollection.InsertOneAsync(log);
-});
-
-// JWT Auth kontrolü
-app.Use(async (context, next) =>
-{
-    var path = context.Request.Path.Value ?? "";
-
-    if (!path.StartsWith("/auth"))
-    {
-        var token = context.Request.Headers["Authorization"].FirstOrDefault();
-        if (string.IsNullOrEmpty(token))
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync("Unauthorized");
-            return;
-        }
-    }
-
-    await next();
 });
 
 app.MapReverseProxy();
