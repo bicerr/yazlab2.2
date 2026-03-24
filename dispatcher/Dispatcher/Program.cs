@@ -63,6 +63,15 @@ app.Use(async (context, next) =>
     await logsCollection.InsertOneAsync(log);
 });
 
+app.MapGet("/dispatcher/logs", async () =>
+{
+    var logs = await logsCollection.Find(_ => true)
+        .SortByDescending(l => l.Timestamp)
+        .Limit(100)
+        .ToListAsync();
+    return Results.Ok(logs);
+});
+
 app.MapReverseProxy();
 
 app.Run();
