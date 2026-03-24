@@ -1,44 +1,74 @@
+using Yarp.ReverseProxy;
+using MongoDB.Driver;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// MongoDB
+var mongoClient = new MongoClient("mongodb://mongodb:27017");
+var database = mongoClient.GetDatabase("dispatcher_db");
+var logsCollection = database.GetCollection<LogEntry>("logs");
+
+// YARP Reverse Proxy
+builder.Services.AddReverseProxy()
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
+builder.Services.AddSingleton(logsCollection);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-
-var summaries = new[]
+// Loglama middleware
+app.Use(async (context, next) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    var log = new LogEntry
+    {
+        Method = context.Request.Method,
+        Path = context.Request.Path,
+        Timestamp = DateTime.UtcNow,
+        StatusCode = context.Response.StatusCode
+    };
 
-app.MapGet("/weatherforecast", () =>
+    await next();
+
+    log.StatusCode = context.Response.StatusCode;
+    await logsCollection.InsertOneAsync(log);
+});
+
+// JWT Auth kontrolü
+app.Use(async (context, next) =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+    var path = context.Request.Path.Value ?? "";
+
+    if (!path.StartsWith("/auth"))
+    {
+        var token = context.Request.Headers["Authorization"].FirstOrDefault();
+        if (string.IsNullOrEmpty(token))
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+    }
+
+    await next();
+});
+
+app.MapReverseProxy();
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+public class LogEntry
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    public MongoDB.Bson.ObjectId Id { get; set; }
+    public string Method { get; set; } = "";
+    public string Path { get; set; } = "";
+    public DateTime Timestamp { get; set; }
+    public int StatusCode { get; set; }
 }
