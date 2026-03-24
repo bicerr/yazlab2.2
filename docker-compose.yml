@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - internal
+
+  dispatcher:
+    build: ./dispatcher/Dispatcher
+    container_name: dispatcher
+    ports:
+    - "5100:8080"
+    depends_on:
+      - mongodb
+    networks:
+      - internal
+      - external
+
+  auth-service:
+    build: ./auth-service/AuthService
+    container_name: auth-service
+    depends_on:
+      - mongodb
+    networks:
+      - internal
+
+  product-service:
+    build: ./product-service/ProductService
+    container_name: product-service
+    depends_on:
+      - mongodb
+    networks:
+      - internal
+
+  order-service:
+    build: ./user-service/UserService
+    container_name: order-service
+    depends_on:
+      - mongodb
+    networks:
+      - internal
+
+volumes:
+  mongo_data:
+
+networks:
+  internal:
+    internal: true
+  external:
+    internal: false
