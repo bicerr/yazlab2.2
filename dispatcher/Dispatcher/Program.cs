@@ -16,6 +16,17 @@ builder.Services.AddSingleton(logsCollection);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -24,7 +35,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// JWT Auth kontrolü (loglama'dan önce)
+app.UseCors();
+
+// JWT Auth kontrolü
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path.Value?.ToLower() ?? "";
